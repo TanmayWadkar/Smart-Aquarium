@@ -1,0 +1,130 @@
+#include <Servo.h>
+#include <ESP8266WiFi.h>
+#include <ESP_Mail_Client.h>
+#include <ESP8266WebServer.h>
+#include<SoftwareSerial.h>
+#include <DallasTemperature.h>
+#include <OneWire.h>
+String apiKey = "2G7OYCQVXYQ2BSQU";
+#define WIFI_SSID "AYUSH"
+#define WIFI_PASSWORD "05102007"
+const char* server = "api.thingspeak.com";
+WiFiClient client;
+//#include <Servo.h>
+WiFiClient espClient;
+Servo myservo;
+int bluetoothTx = 01; // bluetooth tx to 10 pin
+int bluetoothRx = 03; // bluetooth rx to 11 pin
+SoftwareSerial bluetooth(bluetoothTx, bluetoothRx);
+// Data wire is plugged TO GPIO 4
+#define ONE_WIRE_BUS 4
+
+// Setup a oneWire instance to communicate with any OneWire devices (not just 
+Maxim/Dallas temperature ICs)
+OneWire oneWire(ONE_WIRE_BUS);
+// Pass our oneWire reference to Dallas Temperature. 
+DallasTemperature sensors(&oneWire); 
+const int trigPin = 12;
+const int echoPin = 14;
+//define sound velocity in cm/uS
+#define SOUND_VELOCITY 0.034
+long duration;
+float distanceCm;
+void setup(void)
+{
+ Serial.begin(9600);
+ Serial.println();
+ Serial.print("Connecting to AP");
+ WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+ while (WiFi.status() != WL_CONNECTED){
+ Serial.print(".");
+ delay(200);
+ }
+ Serial.println("");
+
+ Serial.println("WiFi connected.");
+ Serial.println("IP address: ");
+ Serial.println(WiFi.localIP());
+ Serial.println();
+ Serial.begin(9600);
+ //sensors.begin(); // Start up the library
+ pinMode(trigPin, OUTPUT); // Sets the trigPin as an Output
+ pinMode(echoPin, INPUT); // Sets the echoPin as an Input
+ myservo.attach(2); // attach servo signal wire to pin 9
+ //Setup usb serial connection to computer
+ Serial.begin(9600);
+ bluetooth.begin(9600);//Setup Bluetooth serial connection to android
+}
+void loop(void)
+{
+ sensors.requestTemperatures();
+float tempC = sensors.getTempCByIndex(0);
+float tempF = sensors.getTempFByIndex(0);
+if ((tempC == -127.00) || (tempF == -196))
+{
+Serial.println("Failed to read from sensor!");
+delay(1000);
+
+}
+else
+{
+Serial.print("Temperature in Celsius: ");
+Serial.println(tempC);
+Serial.print("Temperature in Fahrenheit: ");
+Serial.println(tempF);
+delay(1000);
+}
+ // Clears the trigPin
+ digitalWrite(trigPin, LOW);
+ delayMicroseconds(2);
+ // Sets the trigPin on HIGH state for 10 micro seconds
+ digitalWrite(trigPin, HIGH);
+ delayMicroseconds(10);
+ digitalWrite(trigPin, LOW);
+ // Reads the echoPin, returns the sound wave travel time in microseconds
+ duration = pulseIn(echoPin, HIGH);
+ // Calculate the distance
+ distanceCm = duration * SOUND_VELOCITY/2;
+ 
+
+ // Prints the distance on the Serial Monitor
+ Serial.print("Distance (cm): ");
+ Serial.println(distanceCm);
+ delay(1000);
+ if (client.connect(server,80)) //184.106.153.149 or api.thingspeak.com
+{
+String postStr = apiKey;
+postStr +="&field1=";
+postStr += String(tempC);
+postStr += "\r\n\r\n";
+postStr +="&field2=";
+postStr += String(tempF);
+postStr += "\r\n\r\n";
+postStr +="&field3=";
+postStr += String(distanceCm);
+postStr += "\r\n\r\n";
+client.print("POST /update HTTP/1.1\n");
+client.print("Host: api.thingspeak.com\n");
+client.print("Connection: close\n");
+client.print("X-THINGSPEAKAPIKEY: "+apiKey+"\n");
+client.print("Content-Type: application/x-www-form-urlencoded\n");
+client.print("Content-Length: ");
+client.print(postStr.length());
+client.print("\n\n");
+client.print(postStr);
+Serial.println("Data send to Thingspeak");
+}
+client.stop();
+Serial.println("Waiting...");
+// thingspeak needs minimum 15 sec delay between updates
+delay(2000);
+ //Read from bluetooth and write to usb serial
+ if(bluetooth.available()> 0 ) // receive number from bluetooth
+ {
+ int servopos = bluetooth.read(); // save the received number to servopos
+ Serial.println(servopos); // serial print servopos current number received from 
+bluetooth
+ myservo.write(servopos); // roate the servo the angle received from the 
+android app
+ } 
+}
